@@ -72,15 +72,46 @@ fn spawn_ball(mut commands: Commands) {
             custom_size: Some(Vec2::new(25.0, 25.0)),
             ..default()
         },
-        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+        Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
         Ball(Vec2::new(-100.0, 0.0)),
     ));
+}
+
+fn move_ball(mut ball: Query<(&mut Transform, &Ball)>, time: Res<Time>) {
+    for (mut pos, ball) in &mut ball {
+        pos.translation += ball.0.extend(0.) * time.delta_secs();
+    }
+}
+
+const BWIDTH: f32 = 25.;
+const PWIDTH: f32 = 10.;
+const PHIGTH: f32 = 150.;
+
+fn ball_collide(
+    mut balls: Query<(&Transform, &mut Ball)>,
+    paddles: Query<&Transform, With<Paddle>>,
+) {
+    for (ball, mut velocity) in &mut balls {
+        if ball.translation.y.abs() + BWIDTH / 2. > 250. {
+            velocity.0.y *= -1.;
+        }
+        for paddle in &paddles {
+            if ball.translation.x - BWIDTH / 2. < paddle.translation.x + PWIDTH / 2.
+                && ball.translation.y - BWIDTH / 2. < paddle.translation.y + PHIGTH / 2.
+                && ball.translation.x + BWIDTH / 2. > paddle.translation.x - PWIDTH / 2.
+                && ball.translation.y + BWIDTH / 2. > paddle.translation.y - PHIGTH / 2.
+            {
+                velocity.0 *= -1.;
+                //velocity.0.y = rand::thread_rng().gen::<f32>() * 100.;
+            }
+        }
+    }
 }
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.add_systems(Startup, (setup_camera, spawn_players, spawn_ball));
-    app.add_systems(Update, move_paddle);
+    app.add_systems(Update, (move_paddle, move_ball, ball_collide));
     app.run();
 }
