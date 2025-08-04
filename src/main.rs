@@ -11,6 +11,12 @@ struct Paddle {
 }
 
 fn spawn_players(mut commands: Commands) {
+    commands.spawn((Sprite {
+        color: Color::BLACK,
+        custom_size: Some(Vec2::new(700., 500.)),
+        ..default()
+    },));
+
     commands.spawn((
         Sprite {
             color: Color::WHITE,
