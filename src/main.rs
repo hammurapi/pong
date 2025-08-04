@@ -86,6 +86,7 @@ fn move_ball(mut ball: Query<(&mut Transform, &Ball)>, time: Res<Time>) {
 const BWIDTH: f32 = 25.;
 const PWIDTH: f32 = 10.;
 const PHIGTH: f32 = 150.;
+const MAXBOUNCEANGLE: f32 = std::f32::consts::PI / 36.; // 45 degrees
 
 fn ball_collide(
     mut balls: Query<(&Transform, &mut Ball)>,
@@ -102,7 +103,17 @@ fn ball_collide(
                 && ball.translation.y + BWIDTH / 2. > paddle.translation.y - PHIGTH / 2.
             {
                 velocity.0 *= -1.;
-                //velocity.0.y = rand::thread_rng().gen::<f32>() * 100.;
+
+                /*
+                let normalized_intersect_y =
+                    (ball.translation.y - paddle.translation.y + BWIDTH) / (PHIGTH + BWIDTH);
+                dbg!(normalized_intersect_y);
+                let bounce_angle = normalized_intersect_y * (std::f32::consts::FRAC_PI_4); // 45 degrees
+
+                let speed = velocity.0.length();
+                velocity.0 *= -Vec2::new(bounce_angle.cos(), bounce_angle.sin());
+                dbg!(velocity.0);
+                */
             }
         }
     }
