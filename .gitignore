@@ -5,3 +5,8 @@
 /.*.json
 /.vscode
 /media/*
+
+
+# Added by cargo
+
+/target
