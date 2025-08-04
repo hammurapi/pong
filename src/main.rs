@@ -62,10 +62,25 @@ fn move_paddle(
     }
 }
 
+#[derive(Component)]
+struct Ball(Vec2);
+
+fn spawn_ball(mut commands: Commands) {
+    commands.spawn((
+        Sprite {
+            color: Color::WHITE,
+            custom_size: Some(Vec2::new(25.0, 25.0)),
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+        Ball(Vec2::new(-100.0, 0.0)),
+    ));
+}
+
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.add_systems(Startup, (setup_camera, spawn_players));
+    app.add_systems(Startup, (setup_camera, spawn_players, spawn_ball));
     app.add_systems(Update, move_paddle);
     app.run();
 }
