@@ -121,6 +121,11 @@ struct GameState {
     winner: Option<String>,
 }
 
+#[derive(Resource)]
+struct GameTimer {
+    elapsed: f32,
+}
+
 fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
     let paddle_bounce = asset_server
         .load("sounds/funny-sound-effect-for-quotjack-in-the-boxquot-sound-ver3-110925.ogg");
@@ -224,13 +229,36 @@ fn check_ball_out_of_bounds(
     }
 }
 
+fn increase_ball_speed(
+    mut balls: Query<&mut Ball>,
+    time: Res<Time>,
+    mut game_timer: ResMut<GameTimer>,
+    game_state: Res<GameState>,
+) {
+    if game_state.game_over {
+        return;
+    }
+    
+    game_timer.elapsed += time.delta_secs();
+    
+    // Increase speed every 10 seconds
+    if game_timer.elapsed >= 10.0 {
+        game_timer.elapsed = 0.0;
+        
+        for mut ball in &mut balls {
+            // Increase speed by 10% each time
+            ball.0 *= 1.1;
+        }
+    }
+}
+
 fn reset_ball(entity: Entity, velocity: &mut Ball, commands: &mut Commands) {
     // Reset ball to center
     commands
         .entity(entity)
         .insert(Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)));
 
-    // Give ball random direction (left or right)
+    // Give ball random direction (left or right) with base speed
     let direction = if rand::random::<bool>() { -1.0 } else { 1.0 };
     velocity.0 = Vec2::new(direction * 100.0, 0.0);
 }
@@ -296,6 +324,7 @@ fn main() {
         game_over: false, 
         winner: None 
     });
+    app.insert_resource(GameTimer { elapsed: 0.0 });
     app.add_systems(
         Startup,
         (
@@ -316,6 +345,7 @@ fn main() {
             check_game_over,
             update_score_display,
             game_over_input,
+            increase_ball_speed,
         ),
     );
     app.run();
