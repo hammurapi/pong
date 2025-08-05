@@ -1,4 +1,6 @@
-use bevy::prelude::*;
+use std::f32::consts::PI;
+
+use bevy::{prelude::*, text::cosmic_text::rustybuzz::script::PHOENICIAN};
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
@@ -86,7 +88,7 @@ fn move_ball(mut ball: Query<(&mut Transform, &Ball)>, time: Res<Time>) {
 const BWIDTH: f32 = 25.;
 const PWIDTH: f32 = 10.;
 const PHIGTH: f32 = 150.;
-const MAXBOUNCEANGLE: f32 = std::f32::consts::PI / 36.; // 45 degrees
+const MAXBOUNCEANGLE: f32 = std::f32::consts::FRAC_PI_8; // 22.5 degrees
 
 fn ball_collide(
     mut balls: Query<(&Transform, &mut Ball)>,
@@ -96,24 +98,32 @@ fn ball_collide(
         if ball.translation.y.abs() + BWIDTH / 2. > 250. {
             velocity.0.y *= -1.;
         }
+
         for paddle in &paddles {
             if ball.translation.x - BWIDTH / 2. < paddle.translation.x + PWIDTH / 2.
                 && ball.translation.y - BWIDTH / 2. < paddle.translation.y + PHIGTH / 2.
                 && ball.translation.x + BWIDTH / 2. > paddle.translation.x - PWIDTH / 2.
                 && ball.translation.y + BWIDTH / 2. > paddle.translation.y - PHIGTH / 2.
             {
-                velocity.0 *= -1.;
+                let intersection_y = (ball.translation.y - paddle.translation.y);
+                let normalized_intersect_y = intersection_y / (PHIGTH / 2. + BWIDTH / 2.);
+                // dbg!(intersection_y, normalized_intersect_y);
 
+                let abs_speed = velocity.0.length();
+                let mut bounce_angle = (velocity.0.x / abs_speed).acos();
+                dbg!(bounce_angle.to_degrees());
+                dbg!((normalized_intersect_y * MAXBOUNCEANGLE).to_degrees());
                 /*
-                let normalized_intersect_y =
-                    (ball.translation.y - paddle.translation.y + BWIDTH) / (PHIGTH + BWIDTH);
-                dbg!(normalized_intersect_y);
-                let bounce_angle = normalized_intersect_y * (std::f32::consts::FRAC_PI_4); // 45 degrees
-
-                let speed = velocity.0.length();
-                velocity.0 *= -Vec2::new(bounce_angle.cos(), bounce_angle.sin());
-                dbg!(velocity.0);
+                                bounce_angle +=
+                                    PI - velocity.0.x.signum() * normalized_intersect_y * MAXBOUNCEANGLE;
                 */
+
+                bounce_angle += PI;
+
+                velocity.0 = Vec2::new(
+                    abs_speed * bounce_angle.cos(),
+                    abs_speed * bounce_angle.sin(),
+                );
             }
         }
     }
