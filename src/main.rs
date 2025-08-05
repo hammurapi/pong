@@ -92,13 +92,17 @@ const MAXBOUNCEANGLE: f32 = std::f32::consts::FRAC_PI_8; // 22.5 degrees
 
 #[derive(Resource)]
 struct GameAudio {
-    bounce_sound: Handle<AudioSource>,
+    paddle_bounce: Handle<AudioSource>,
+    wall_bounce: Handle<AudioSource>,
 }
 
+
 fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let bounce_sound = asset_server
+    let paddle_bounce = asset_server
         .load("sounds/funny-sound-effect-for-quotjack-in-the-boxquot-sound-ver3-110925.ogg");
-    commands.insert_resource(GameAudio { bounce_sound });
+    let wall_bounce = asset_server
+        .load("sounds/surprise-sound-effect-99300.ogg");
+    commands.insert_resource(GameAudio { paddle_bounce, wall_bounce });
 }
 
 fn ball_collide(
@@ -110,6 +114,12 @@ fn ball_collide(
     for (ball, mut velocity) in &mut balls {
         if ball.translation.y.abs() + BWIDTH / 2. > 250. {
             velocity.0.y *= -1.;
+
+            // Play bounce sound
+                commands.spawn((
+                    AudioPlayer::new(audio.wall_bounce.clone()),
+                    PlaybackSettings::DESPAWN,
+                ));
         }
 
         for paddle in &paddles {
@@ -135,7 +145,7 @@ fn ball_collide(
 
                 // Play bounce sound
                 commands.spawn((
-                    AudioPlayer::new(audio.bounce_sound.clone()),
+                    AudioPlayer::new(audio.paddle_bounce.clone()),
                     PlaybackSettings::DESPAWN,
                 ));
             }
