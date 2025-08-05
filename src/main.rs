@@ -50,7 +50,12 @@ fn move_paddle(
     mut paddles: Query<(&mut Transform, &Paddle)>,
     input: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    game_state: Res<GameState>,
 ) {
+    if game_state.game_over {
+        return; // Don't move paddles if game is over
+    }
+    
     for (mut pos, settings) in &mut paddles {
         if input.pressed(settings.move_up) {
             pos.translation.y += 100.0 * time.delta_secs();
@@ -79,7 +84,15 @@ fn spawn_ball(mut commands: Commands) {
     ));
 }
 
-fn move_ball(mut ball: Query<(&mut Transform, &Ball)>, time: Res<Time>) {
+fn move_ball(
+    mut ball: Query<(&mut Transform, &Ball)>,
+    time: Res<Time>,
+    game_state: Res<GameState>,
+) {
+    if game_state.game_over {
+        return; // Don't move ball if game is over
+    }
+    
     for (mut pos, ball) in &mut ball {
         pos.translation += ball.0.extend(0.) * time.delta_secs();
     }
@@ -100,6 +113,12 @@ struct GameAudio {
 struct Score {
     left: u32,
     right: u32,
+}
+
+#[derive(Resource)]
+struct GameState {
+    game_over: bool,
+    winner: Option<String>,
 }
 
 fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -138,11 +157,46 @@ fn spawn_ui(mut commands: Commands) {
     });
 }
 
-fn update_score_display(score: Res<Score>, mut text_query: Query<&mut Text>) {
-    if score.is_changed() {
-        for mut text in &mut text_query {
-            text.0 = format!("{} - {}", score.left, score.right);
+fn check_game_over(
+    score: Res<Score>,
+    mut game_state: ResMut<GameState>,
+) {
+    if !game_state.game_over {
+        if score.left >= 10 {
+            game_state.game_over = true;
+            game_state.winner = Some("Left Player".to_string());
+        } else if score.right >= 10 {
+            game_state.game_over = true;
+            game_state.winner = Some("Right Player".to_string());
         }
+    }
+}
+
+fn update_score_display(
+    score: Res<Score>,
+    game_state: Res<GameState>,
+    mut text_query: Query<&mut Text>,
+) {
+    if score.is_changed() || game_state.is_changed() {
+        for mut text in &mut text_query {
+            if game_state.game_over {
+                if let Some(winner) = &game_state.winner {
+                    text.0 = format!("{} WINS!\n{} - {}", winner, score.left, score.right);
+                }
+            } else {
+                text.0 = format!("{} - {}", score.left, score.right);
+            }
+        }
+    }
+}
+
+fn game_over_input(
+    input: Res<ButtonInput<KeyCode>>,
+    game_state: Res<GameState>,
+    mut exit: EventWriter<AppExit>,
+) {
+    if game_state.game_over && input.just_pressed(KeyCode::Escape) {
+        exit.send(AppExit::Success);
     }
 }
 
@@ -150,7 +204,12 @@ fn check_ball_out_of_bounds(
     mut balls: Query<(Entity, &Transform, &mut Ball)>,
     mut score: ResMut<Score>,
     mut commands: Commands,
+    game_state: Res<GameState>,
 ) {
+    if game_state.game_over {
+        return; // Don't check bounds if game is over
+    }
+    
     for (entity, ball_transform, mut velocity) in &mut balls {
         // Check if ball went off left or right side
         if ball_transform.translation.x < -350.0 {
@@ -181,7 +240,12 @@ fn ball_collide(
     paddles: Query<&Transform, With<Paddle>>,
     mut commands: Commands,
     audio: Res<GameAudio>,
+    game_state: Res<GameState>,
 ) {
+    if game_state.game_over {
+        return; // Don't process collisions if game is over
+    }
+    
     for (ball, mut velocity) in &mut balls {
         if ball.translation.y.abs() + BWIDTH / 2. > 250. {
             velocity.0.y *= -1.;
@@ -228,6 +292,10 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.insert_resource(Score { left: 0, right: 0 });
+    app.insert_resource(GameState { 
+        game_over: false, 
+        winner: None 
+    });
     app.add_systems(
         Startup,
         (
@@ -245,7 +313,9 @@ fn main() {
             move_ball,
             ball_collide,
             check_ball_out_of_bounds,
+            check_game_over,
             update_score_display,
+            game_over_input,
         ),
     );
     app.run();
