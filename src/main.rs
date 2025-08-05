@@ -96,7 +96,8 @@ struct GameAudio {
 }
 
 fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let bounce_sound = asset_server.load("sounds/funny-sound-effect-for-quotjack-in-the-boxquot-sound-ver3-110925.ogg");
+    let bounce_sound = asset_server
+        .load("sounds/funny-sound-effect-for-quotjack-in-the-boxquot-sound-ver3-110925.ogg");
     commands.insert_resource(GameAudio { bounce_sound });
 }
 
@@ -117,18 +118,18 @@ fn ball_collide(
                 && ball.translation.x + BWIDTH / 2. > paddle.translation.x - PWIDTH / 2.
                 && ball.translation.y + BWIDTH / 2. > paddle.translation.y - PHIGTH / 2.
             {
-                let intersection_y = (ball.translation.y - paddle.translation.y);
-                let normalized_intersect_y = intersection_y / (PHIGTH / 2. + BWIDTH / 2.);
+                let intersection_y = ball.translation.y - paddle.translation.y;
+                let normalized_intersect_y = (intersection_y / (PHIGTH / 2.)).clamp(-1.0, 1.0);
 
                 let abs_speed = velocity.0.length();
-                let mut bounce_angle = (velocity.0.x / abs_speed).acos();
-                dbg!(bounce_angle.to_degrees());
-                dbg!((normalized_intersect_y * MAXBOUNCEANGLE).to_degrees());
 
-                bounce_angle += PI;
+                // Calculate bounce angle based on where ball hits paddle
+                let bounce_angle = normalized_intersect_y * MAXBOUNCEANGLE;
 
+                // Determine direction based on which side of paddle was hit
+                let direction = -paddle.translation.x.signum();
                 velocity.0 = Vec2::new(
-                    abs_speed * bounce_angle.cos(),
+                    direction * abs_speed * bounce_angle.cos(),
                     abs_speed * bounce_angle.sin(),
                 );
 
