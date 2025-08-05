@@ -1,6 +1,6 @@
-use std::f32::consts::PI;
-
 use bevy::{audio::Volume, prelude::*, text::cosmic_text::rustybuzz::script::PHOENICIAN};
+use rand;
+use std::f32::consts::PI;
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
@@ -96,13 +96,72 @@ struct GameAudio {
     wall_bounce: Handle<AudioSource>,
 }
 
+#[derive(Resource)]
+struct Score {
+    left: u32,
+    right: u32,
+}
 
 fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
     let paddle_bounce = asset_server
         .load("sounds/funny-sound-effect-for-quotjack-in-the-boxquot-sound-ver3-110925.ogg");
-    let wall_bounce = asset_server
-        .load("sounds/surprise-sound-effect-99300.ogg");
-    commands.insert_resource(GameAudio { paddle_bounce, wall_bounce });
+    let wall_bounce = asset_server.load("sounds/surprise-sound-effect-99300.ogg");
+    commands.insert_resource(GameAudio {
+        paddle_bounce,
+        wall_bounce,
+    });
+}
+
+fn spawn_ui(mut commands: Commands) {
+    // Score text
+    commands.spawn((
+        Text::new("0 - 0"),
+        TextLayout::new_with_justify(JustifyText::Center),
+        TextFont {
+            font_size: 60.0,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Transform::from_translation(Vec3::new(0.0, 200.0, 1.0)),
+    ));
+}
+
+fn update_score_display(score: Res<Score>, mut text_query: Query<&mut Text>) {
+    if score.is_changed() {
+        for mut text in &mut text_query {
+            text.0 = format!("{} - {}", score.left, score.right);
+        }
+    }
+}
+
+fn check_ball_out_of_bounds(
+    mut balls: Query<(Entity, &Transform, &mut Ball)>,
+    mut score: ResMut<Score>,
+    mut commands: Commands,
+) {
+    for (entity, ball_transform, mut velocity) in &mut balls {
+        // Check if ball went off left or right side
+        if ball_transform.translation.x < -350.0 {
+            // Right player scores
+            score.right += 1;
+            reset_ball(entity, &mut velocity, &mut commands);
+        } else if ball_transform.translation.x > 350.0 {
+            // Left player scores
+            score.left += 1;
+            reset_ball(entity, &mut velocity, &mut commands);
+        }
+    }
+}
+
+fn reset_ball(entity: Entity, velocity: &mut Ball, commands: &mut Commands) {
+    // Reset ball to center
+    commands
+        .entity(entity)
+        .insert(Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)));
+
+    // Give ball random direction (left or right)
+    let direction = if rand::random::<bool>() { -1.0 } else { 1.0 };
+    velocity.0 = Vec2::new(direction * 100.0, 0.0);
 }
 
 fn ball_collide(
@@ -116,10 +175,10 @@ fn ball_collide(
             velocity.0.y *= -1.;
 
             // Play bounce sound
-                commands.spawn((
-                    AudioPlayer::new(audio.wall_bounce.clone()),
-                    PlaybackSettings::DESPAWN,
-                ));
+            commands.spawn((
+                AudioPlayer::new(audio.wall_bounce.clone()),
+                PlaybackSettings::DESPAWN,
+            ));
         }
 
         for paddle in &paddles {
@@ -156,10 +215,26 @@ fn ball_collide(
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
+    app.insert_resource(Score { left: 0, right: 0 });
     app.add_systems(
         Startup,
-        (setup_camera, spawn_players, spawn_ball, load_sounds),
+        (
+            setup_camera,
+            spawn_players,
+            spawn_ball,
+            spawn_ui,
+            load_sounds,
+        ),
     );
-    app.add_systems(Update, (move_paddle, move_ball, ball_collide));
+    app.add_systems(
+        Update,
+        (
+            move_paddle,
+            move_ball,
+            ball_collide,
+            check_ball_out_of_bounds,
+            update_score_display,
+        ),
+    );
     app.run();
 }
