@@ -96,7 +96,7 @@ struct GameAudio {
 }
 
 fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let bounce_sound = asset_server.load("sounds/surprise-sound-effect-99300.ogg");
+    let bounce_sound = asset_server.load("sounds/funny-sound-effect-for-quotjack-in-the-boxquot-sound-ver3-110925.ogg");
     commands.insert_resource(GameAudio { bounce_sound });
 }
 
