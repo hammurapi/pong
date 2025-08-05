@@ -113,17 +113,29 @@ fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn spawn_ui(mut commands: Commands) {
-    // Score text
+    // Create a container that fills the screen
     commands.spawn((
-        Text::new("0 - 0"),
-        TextLayout::new_with_justify(JustifyText::Center),
-        TextFont {
-            font_size: 60.0,
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            display: Display::Flex,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::FlexStart,
+            padding: UiRect::top(Val::Percent(15.0)),
             ..default()
         },
-        TextColor(Color::WHITE),
-        Transform::from_translation(Vec3::new(0.0, 200.0, 1.0)),
-    ));
+    )).with_children(|parent| {
+        // Score text as a child
+        parent.spawn((
+            Text::new("0 - 0"),
+            TextLayout::new_with_justify(JustifyText::Center),
+            TextFont {
+                font_size: 60.0,
+                ..default()
+            },
+            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.4)), // White with 40% opacity
+        ));
+    });
 }
 
 fn update_score_display(score: Res<Score>, mut text_query: Query<&mut Text>) {
