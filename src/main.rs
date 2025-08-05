@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use bevy::{prelude::*, text::cosmic_text::rustybuzz::script::PHOENICIAN};
+use bevy::{audio::Volume, prelude::*, text::cosmic_text::rustybuzz::script::PHOENICIAN};
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
@@ -93,6 +93,7 @@ const MAXBOUNCEANGLE: f32 = std::f32::consts::FRAC_PI_8; // 22.5 degrees
 fn ball_collide(
     mut balls: Query<(&Transform, &mut Ball)>,
     paddles: Query<&Transform, With<Paddle>>,
+    mut audio_query: Query<(Entity, &mut AudioSink), (With<BallBounceSound>, Changed<AudioSink>)>,
 ) {
     for (ball, mut velocity) in &mut balls {
         if ball.translation.y.abs() + BWIDTH / 2. > 250. {
@@ -124,15 +125,41 @@ fn ball_collide(
                     abs_speed * bounce_angle.cos(),
                     abs_speed * bounce_angle.sin(),
                 );
+
+                for (entity, mut audio_sink) in &mut audio_query {
+                    audio_sink.play();
+
+                    // Example: Set volume
+                    // audio_sink.set_volume(0.5);
+                    audio_sink.set_volume(Volume::Decibels(0.0));
+                }
             }
         }
     }
 }
 
+#[derive(Component)]
+struct BallBounceSound;
+
+fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
+    // Load the audio asset
+    let audio_handle = asset_server.load("sounds/surprise-sound-effect-99300.ogg");
+
+    // Spawn an entity with the audio source and bundle
+    commands.spawn((
+        BallBounceSound,
+        AudioPlayer::new(audio_handle.clone()),
+        PlaybackSettings::default(),
+    ));
+}
+
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.add_systems(Startup, (setup_camera, spawn_players, spawn_ball));
+    app.add_systems(
+        Startup,
+        (setup_camera, spawn_players, spawn_ball, load_sounds),
+    );
     app.add_systems(Update, (move_paddle, move_ball, ball_collide));
     app.run();
 }
