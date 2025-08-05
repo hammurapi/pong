@@ -90,10 +90,21 @@ const PWIDTH: f32 = 10.;
 const PHIGTH: f32 = 150.;
 const MAXBOUNCEANGLE: f32 = std::f32::consts::FRAC_PI_8; // 22.5 degrees
 
+#[derive(Resource)]
+struct GameAudio {
+    bounce_sound: Handle<AudioSource>,
+}
+
+fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let bounce_sound = asset_server.load("sounds/surprise-sound-effect-99300.ogg");
+    commands.insert_resource(GameAudio { bounce_sound });
+}
+
 fn ball_collide(
     mut balls: Query<(&Transform, &mut Ball)>,
     paddles: Query<&Transform, With<Paddle>>,
-    mut audio_query: Query<(Entity, &mut AudioSink), (With<BallBounceSound>, Changed<AudioSink>)>,
+    mut commands: Commands,
+    audio: Res<GameAudio>,
 ) {
     for (ball, mut velocity) in &mut balls {
         if ball.translation.y.abs() + BWIDTH / 2. > 250. {
@@ -108,16 +119,11 @@ fn ball_collide(
             {
                 let intersection_y = (ball.translation.y - paddle.translation.y);
                 let normalized_intersect_y = intersection_y / (PHIGTH / 2. + BWIDTH / 2.);
-                // dbg!(intersection_y, normalized_intersect_y);
 
                 let abs_speed = velocity.0.length();
                 let mut bounce_angle = (velocity.0.x / abs_speed).acos();
                 dbg!(bounce_angle.to_degrees());
                 dbg!((normalized_intersect_y * MAXBOUNCEANGLE).to_degrees());
-                /*
-                                bounce_angle +=
-                                    PI - velocity.0.x.signum() * normalized_intersect_y * MAXBOUNCEANGLE;
-                */
 
                 bounce_angle += PI;
 
@@ -126,31 +132,14 @@ fn ball_collide(
                     abs_speed * bounce_angle.sin(),
                 );
 
-                for (entity, mut audio_sink) in &mut audio_query {
-                    audio_sink.play();
-
-                    // Example: Set volume
-                    // audio_sink.set_volume(0.5);
-                    audio_sink.set_volume(Volume::Decibels(0.0));
-                }
+                // Play bounce sound
+                commands.spawn((
+                    AudioPlayer::new(audio.bounce_sound.clone()),
+                    PlaybackSettings::DESPAWN,
+                ));
             }
         }
     }
-}
-
-#[derive(Component)]
-struct BallBounceSound;
-
-fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Load the audio asset
-    let audio_handle = asset_server.load("sounds/surprise-sound-effect-99300.ogg");
-
-    // Spawn an entity with the audio source and bundle
-    commands.spawn((
-        BallBounceSound,
-        AudioPlayer::new(audio_handle.clone()),
-        PlaybackSettings::default(),
-    ));
 }
 
 fn main() {
