@@ -12,6 +12,12 @@ struct Paddle {
     move_down: KeyCode,
 }
 
+#[derive(Component)]
+struct Ball;
+
+#[derive(Component)]
+struct Wall;
+
 fn spawn_players(mut commands: Commands) {
     commands.spawn(Sprite {
         color: Color::BLACK,
@@ -76,9 +82,6 @@ fn move_paddle(
 }
 
 #[derive(Component)]
-struct Ball(Vec2);
-
-#[derive(Component)]
 struct ScoreText;
 
 #[derive(Component)]
@@ -97,33 +100,23 @@ fn spawn_ball(mut commands: Commands) {
       .insert(Collider::circle(12.5))
       .insert(LinearVelocity(Vec2::new(-200.0, 0.0)))
       .insert(Restitution::new(1.0))
-      .insert(Ball(Vec2::new(-200.0, 0.0)));
+      .insert(Ball);
 }
 
-fn move_ball(
-    mut ball: Query<(&mut Transform, &Ball)>,
-    time: Res<Time>,
-    game_state: Res<GameState>,
-) {
-    if game_state.phase != GamePhase::Playing {
-        return;
-    }
 
-    for (mut pos, ball) in &mut ball {
-        pos.translation += ball.0.extend(0.) * time.delta_secs();
-    }
-}
 
 fn spawn_walls(mut commands: Commands) {
     // Top wall
     commands.spawn(Transform::from_translation(Vec3::new(0.0, 250.0, 0.0)))
         .insert(RigidBody::Static)
-        .insert(Collider::rectangle(700.0, 10.0));
+        .insert(Collider::rectangle(700.0, 10.0))
+        .insert(Wall);
     
     // Bottom wall
     commands.spawn(Transform::from_translation(Vec3::new(0.0, -250.0, 0.0)))
         .insert(RigidBody::Static)
-        .insert(Collider::rectangle(700.0, 10.0));
+        .insert(Collider::rectangle(700.0, 10.0))
+        .insert(Wall);
 }
 
 fn handle_ball_physics(
@@ -149,11 +142,6 @@ fn handle_ball_physics(
         }
     }
 }
-
-const BWIDTH: f32 = 25.;
-const PWIDTH: f32 = 10.;
-const PHIGTH: f32 = 150.;
-const MAXBOUNCEANGLE: f32 = std::f32::consts::FRAC_PI_8; // 22.5 degrees
 
 #[derive(Resource)]
 struct GameAudio {
@@ -349,7 +337,8 @@ fn update_game_visibility(
 }
 
 fn check_ball_out_of_bounds(
-    mut balls: Query<(Entity, &Transform, &mut Ball)>,
+    mut balls: Query<(Entity, &Transform), With<Ball>>,
+    mut velocities: Query<&mut LinearVelocity>,
     mut score: ResMut<Score>,
     mut commands: Commands,
     game_state: Res<GameState>,
@@ -358,22 +347,22 @@ fn check_ball_out_of_bounds(
         return;
     }
 
-    for (entity, ball_transform, mut velocity) in &mut balls {
+    for (entity, ball_transform) in &mut balls {
         // Check if ball went off left or right side
         if ball_transform.translation.x < -350.0 {
             // Right player scores
             score.right += 1;
-            reset_ball(entity, &mut velocity, &mut commands);
+            reset_ball(entity, &mut velocities, &mut commands);
         } else if ball_transform.translation.x > 350.0 {
             // Left player scores
             score.left += 1;
-            reset_ball(entity, &mut velocity, &mut commands);
+            reset_ball(entity, &mut velocities, &mut commands);
         }
     }
 }
 
 fn increase_ball_speed(
-    mut balls: Query<&mut Ball>,
+    mut balls: Query<&mut LinearVelocity, With<Ball>>,
     time: Res<Time>,
     mut game_timer: ResMut<GameTimer>,
     game_state: Res<GameState>,
@@ -388,27 +377,36 @@ fn increase_ball_speed(
     if game_timer.elapsed >= 10.0 {
         game_timer.elapsed = 0.0;
 
-        for mut ball in &mut balls {
+        for mut velocity in &mut balls {
             // Increase speed by 10% each time
-            ball.0 *= 1.1;
+            velocity.0 *= 1.1;
         }
     }
 }
 
-fn reset_ball(entity: Entity, velocity: &mut Ball, commands: &mut Commands) {
+fn reset_ball(
+    entity: Entity, 
+    velocities: &mut Query<&mut LinearVelocity>,
+    commands: &mut Commands
+) {
     // Reset ball to center
     commands
         .entity(entity)
         .insert(Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)));
 
     // Give ball random direction (left or right) with base speed
-    let direction = if rand::random::<bool>() { -1.0 } else { 1.0 };
-    velocity.0 = Vec2::new(direction * 100.0, 0.0);
+    if let Ok(mut velocity) = velocities.get_mut(entity) {
+        let direction = if rand::random::<bool>() { -1.0 } else { 1.0 };
+        velocity.0 = Vec2::new(direction * 200.0, 0.0);
+    }
 }
 
-fn ball_collide(
-    mut balls: Query<(&Transform, &mut Ball)>,
+fn handle_collisions(
+    mut collision_events: EventReader<CollisionStarted>,
+    mut balls: Query<&mut LinearVelocity, With<Ball>>,
     paddles: Query<&Transform, With<Paddle>>,
+    walls: Query<(), With<Wall>>,
+    ball_transforms: Query<&Transform, With<Ball>>,
     mut commands: Commands,
     audio: Res<GameAudio>,
     game_state: Res<GameState>,
@@ -417,43 +415,48 @@ fn ball_collide(
         return;
     }
 
-    for (ball, mut velocity) in &mut balls {
-        if ball.translation.y.abs() + BWIDTH / 2. > 250. {
-            velocity.0.y *= -1.;
+    for CollisionStarted(entity1, entity2) in collision_events.read() {
+        // Check if one entity is a ball
+        let (ball_entity, other_entity) = if balls.contains(*entity1) {
+            (*entity1, *entity2)
+        } else if balls.contains(*entity2) {
+            (*entity2, *entity1)
+        } else {
+            continue;
+        };
 
-            // Play bounce sound
-            commands.spawn((
-                AudioPlayer::new(audio.wall_bounce.clone()),
-                PlaybackSettings::DESPAWN,
-            ));
-        }
-
-        for paddle in &paddles {
-            if ball.translation.x - BWIDTH / 2. < paddle.translation.x + PWIDTH / 2.
-                && ball.translation.y - BWIDTH / 2. < paddle.translation.y + PHIGTH / 2.
-                && ball.translation.x + BWIDTH / 2. > paddle.translation.x - PWIDTH / 2.
-                && ball.translation.y + BWIDTH / 2. > paddle.translation.y - PHIGTH / 2.
-            {
-                let intersection_y = ball.translation.y - paddle.translation.y;
-                let normalized_intersect_y = (intersection_y / (PHIGTH / 2.)).clamp(-1.0, 1.0);
-
-                let abs_speed = velocity.0.length();
-
-                // Calculate bounce angle based on where ball hits paddle
-                let bounce_angle = normalized_intersect_y * MAXBOUNCEANGLE;
-
-                // Determine direction based on which side of paddle was hit
-                let direction = -paddle.translation.x.signum();
-                velocity.0 = Vec2::new(
-                    direction * abs_speed * bounce_angle.cos(),
-                    abs_speed * bounce_angle.sin(),
-                );
-
-                // Play bounce sound
+        if let Ok(mut ball_velocity) = balls.get_mut(ball_entity) {
+            // Handle wall collision
+            if walls.contains(other_entity) {
+                // Play wall bounce sound
                 commands.spawn((
-                    AudioPlayer::new(audio.paddle_bounce.clone()),
+                    AudioPlayer::new(audio.wall_bounce.clone()),
                     PlaybackSettings::DESPAWN,
                 ));
+            }
+            // Handle paddle collision
+            else if let Ok(paddle_transform) = paddles.get(other_entity) {
+                if let Ok(ball_transform) = ball_transforms.get(ball_entity) {
+                    let intersection_y = ball_transform.translation.y - paddle_transform.translation.y;
+                    let normalized_intersect_y = (intersection_y / 75.0).clamp(-1.0, 1.0); // 75 = PADDLE_HEIGHT/2
+                    
+                    let speed = ball_velocity.0.length();
+                    let bounce_angle = normalized_intersect_y * std::f32::consts::FRAC_PI_8; // 22.5 degrees max
+                    
+                    // Determine direction based on paddle position
+                    let direction = -paddle_transform.translation.x.signum();
+                    
+                    ball_velocity.0 = Vec2::new(
+                        direction * speed * bounce_angle.cos(),
+                        speed * bounce_angle.sin(),
+                    );
+
+                    // Play paddle bounce sound
+                    commands.spawn((
+                        AudioPlayer::new(audio.paddle_bounce.clone()),
+                        PlaybackSettings::DESPAWN,
+                    ));
+                }
             }
         }
     }
@@ -491,6 +494,7 @@ fn main() {
             update_game_visibility,
             start_screen_input,
             increase_ball_speed,
+            handle_collisions,
         ),
     );
     app.run();
