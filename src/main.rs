@@ -1,11 +1,14 @@
-use bevy::{audio::Volume, prelude::*, text::cosmic_text::rustybuzz::script::PHOENICIAN};
+use bevy::prelude::*;
 use avian2d::prelude::*;
 use rand;
 
-fn setup_camera(mut commands: Commands) {
-    commands.spawn(Camera2d::default());
-}
+// Constants
+const PADDLE_SPEED: f32 = 200.0;
+const BALL_BASE_SPEED: f32 = 200.0;
+const PADDLE_HEIGHT: f32 = 150.0;
+const PADDLE_WIDTH: f32 = 10.0;
 
+// Components
 #[derive(Component)]
 struct Paddle {
     move_up: KeyCode,
@@ -18,131 +21,13 @@ struct Ball;
 #[derive(Component)]
 struct Wall;
 
-fn spawn_players(mut commands: Commands) {
-    commands.spawn(Sprite {
-        color: Color::BLACK,
-        custom_size: Some(Vec2::new(700., 500.)),
-        ..default()
-    });
-
-    // Left paddle
-    commands.spawn((
-        Sprite {
-            color: Color::WHITE,
-            custom_size: Some(Vec2::new(10.0, 150.0)),
-            ..default()
-        },
-        Transform::from_translation(Vec3::new(-300.0, 0.0, 0.0)),
-        Visibility::Hidden,
-    )).insert(RigidBody::Kinematic)
-      .insert(Collider::rectangle(10.0, 150.0))
-      .insert(Paddle {
-          move_up: KeyCode::KeyW,
-          move_down: KeyCode::KeyS,
-      });
-
-    // Right paddle
-    commands.spawn((
-        Sprite {
-            color: Color::WHITE,
-            custom_size: Some(Vec2::new(10.0, 150.0)),
-            ..default()
-        },
-        Transform::from_translation(Vec3::new(300.0, 0.0, 0.0)),
-        Visibility::Hidden,
-    )).insert(RigidBody::Kinematic)
-      .insert(Collider::rectangle(10.0, 150.0))
-      .insert(Paddle {
-          move_up: KeyCode::ArrowUp,
-          move_down: KeyCode::ArrowDown,
-      });
-}
-
-fn move_paddle(
-    mut paddles: Query<(&mut Transform, &Paddle)>,
-    input: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
-    game_state: Res<GameState>,
-) {
-    if game_state.phase != GamePhase::Playing {
-        return;
-    }
-
-    for (mut pos, settings) in &mut paddles {
-        if input.pressed(settings.move_up) {
-            pos.translation.y += 100.0 * time.delta_secs();
-            pos.translation.y = pos.translation.y.clamp(-250.0 + 75.0, 250.0 - 75.0);
-        }
-
-        if input.pressed(settings.move_down) {
-            pos.translation.y -= 100.0 * time.delta_secs();
-            pos.translation.y = pos.translation.y.clamp(-250.0 + 75.0, 250.0 - 75.0);
-        }
-    }
-}
-
 #[derive(Component)]
 struct ScoreText;
 
 #[derive(Component)]
 struct StartScreenText;
 
-fn spawn_ball(mut commands: Commands) {
-    commands.spawn((
-        Sprite {
-            color: Color::WHITE,
-            custom_size: Some(Vec2::new(25.0, 25.0)),
-            ..default()
-        },
-        Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
-        Visibility::Hidden,
-    )).insert(RigidBody::Dynamic)
-      .insert(Collider::circle(12.5))
-      .insert(LinearVelocity(Vec2::new(-200.0, 0.0)))
-      .insert(Restitution::new(1.0))
-      .insert(Ball);
-}
-
-
-
-fn spawn_walls(mut commands: Commands) {
-    // Top wall
-    commands.spawn(Transform::from_translation(Vec3::new(0.0, 250.0, 0.0)))
-        .insert(RigidBody::Static)
-        .insert(Collider::rectangle(700.0, 10.0))
-        .insert(Wall);
-    
-    // Bottom wall
-    commands.spawn(Transform::from_translation(Vec3::new(0.0, -250.0, 0.0)))
-        .insert(RigidBody::Static)
-        .insert(Collider::rectangle(700.0, 10.0))
-        .insert(Wall);
-}
-
-fn handle_ball_physics(
-    mut ball_query: Query<(&mut LinearVelocity, &Transform), With<Ball>>,
-    game_state: Res<GameState>,
-    time: Res<Time>,
-) {
-    if game_state.phase != GamePhase::Playing {
-        return;
-    }
-    
-    // Physics will handle movement automatically, but we can add custom behaviors here
-    for (mut velocity, _transform) in &mut ball_query {
-        // Ensure minimum speed to prevent the ball from getting too slow
-        let speed = velocity.0.length();
-        if speed < 100.0 {
-            velocity.0 = velocity.0.normalize() * 100.0;
-        }
-        
-        // Cap maximum speed
-        if speed > 500.0 {
-            velocity.0 = velocity.0.normalize() * 500.0;
-        }
-    }
-}
-
+// Resources
 #[derive(Resource)]
 struct GameAudio {
     paddle_bounce: Handle<AudioSource>,
@@ -172,13 +57,136 @@ struct GameTimer {
     elapsed: f32,
 }
 
+fn setup_camera(mut commands: Commands) {
+    commands.spawn(Camera2d::default());
+}
+
+fn spawn_players(mut commands: Commands) {
+    commands.spawn(Sprite {
+        color: Color::BLACK,
+        custom_size: Some(Vec2::new(700., 500.)),
+        ..default()
+    });
+
+    // Left paddle
+    commands.spawn((
+        Sprite {
+            color: Color::WHITE,
+            custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(-300.0, 0.0, 0.0)),
+        Visibility::Hidden,
+        RigidBody::Kinematic,
+        Collider::rectangle(PADDLE_WIDTH, PADDLE_HEIGHT),
+        Paddle {
+            move_up: KeyCode::KeyW,
+            move_down: KeyCode::KeyS,
+        },
+    ));
+
+    // Right paddle
+    commands.spawn((
+        Sprite {
+            color: Color::WHITE,
+            custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(300.0, 0.0, 0.0)),
+        Visibility::Hidden,
+        RigidBody::Kinematic,
+        Collider::rectangle(PADDLE_WIDTH, PADDLE_HEIGHT),
+        Paddle {
+            move_up: KeyCode::ArrowUp,
+            move_down: KeyCode::ArrowDown,
+        },
+    ));
+}
+
+fn move_paddle(
+    mut paddles: Query<(&mut Transform, &Paddle)>,
+    input: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    game_state: Res<GameState>,
+) {
+    if game_state.phase != GamePhase::Playing {
+        return;
+    }
+
+    for (mut pos, settings) in &mut paddles {
+        if input.pressed(settings.move_up) {
+            pos.translation.y += PADDLE_SPEED * time.delta_secs();
+            pos.translation.y = pos.translation.y.clamp(-250.0 + PADDLE_HEIGHT / 2.0, 250.0 - PADDLE_HEIGHT / 2.0);
+        }
+
+        if input.pressed(settings.move_down) {
+            pos.translation.y -= PADDLE_SPEED * time.delta_secs();
+            pos.translation.y = pos.translation.y.clamp(-250.0 + PADDLE_HEIGHT / 2.0, 250.0 - PADDLE_HEIGHT / 2.0);
+        }
+    }
+}
+
+fn spawn_ball(mut commands: Commands) {
+    commands.spawn((
+        Sprite {
+            color: Color::WHITE,
+            custom_size: Some(Vec2::new(25.0, 25.0)),
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
+        RigidBody::Dynamic,
+        Collider::circle(12.5),
+        LinearVelocity(Vec2::new(-BALL_BASE_SPEED, 0.0)),
+        Restitution::new(1.0),
+        Ball,
+        Visibility::Hidden,
+    ));
+}
+
+
+
+fn spawn_walls(mut commands: Commands) {
+    // Top wall
+    commands.spawn((
+        Transform::from_translation(Vec3::new(0.0, 250.0, 0.0)),
+        RigidBody::Static,
+        Collider::rectangle(700.0, 10.0),
+        Wall,
+    ));
+    
+    // Bottom wall
+    commands.spawn((
+        Transform::from_translation(Vec3::new(0.0, -250.0, 0.0)),
+        RigidBody::Static,
+        Collider::rectangle(700.0, 10.0),
+        Wall,
+    ));
+}
+
+fn handle_ball_physics(
+    mut ball_query: Query<(&mut LinearVelocity, &Transform), With<Ball>>,
+    game_state: Res<GameState>,
+) {
+    if game_state.phase != GamePhase::Playing {
+        return;
+    }
+    
+    // Physics will handle movement automatically, but we can add custom behaviors here
+    for (mut velocity, _transform) in &mut ball_query {
+        // Ensure minimum and maximum speed
+        let speed = velocity.0.length();
+        if speed < 100.0 {
+            velocity.0 = velocity.0.normalize() * 100.0;
+        } else if speed > 500.0 {
+            velocity.0 = velocity.0.normalize() * 500.0;
+        }
+    }
+}
+
 fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let paddle_bounce = asset_server
-        .load("sounds/funny-sound-effect-for-quotjack-in-the-boxquot-sound-ver3-110925.ogg");
-    let wall_bounce = asset_server.load("sounds/surprise-sound-effect-99300.ogg");
     commands.insert_resource(GameAudio {
-        paddle_bounce,
-        wall_bounce,
+        paddle_bounce: asset_server.load("sounds/paddle_bounce.ogg"),
+        wall_bounce: asset_server.load("sounds/wall_bounce.ogg"),
     });
 }
 
@@ -249,7 +257,8 @@ fn start_screen_input(
         } else if input.get_just_pressed().next().is_some() {
             game_state.phase = GamePhase::Playing;
             game_state.winner = None;
-            // Despawn only the start screen nodes that contain StartScreenText
+            
+            // Despawn start screen entities
             for node_entity in &start_screen_nodes {
                 if let Ok(children) = children_query.get(node_entity) {
                     for child in children {
@@ -397,7 +406,7 @@ fn reset_ball(
     // Give ball random direction (left or right) with base speed
     if let Ok(mut velocity) = velocities.get_mut(entity) {
         let direction = if rand::random::<bool>() { -1.0 } else { 1.0 };
-        velocity.0 = Vec2::new(direction * 200.0, 0.0);
+        velocity.0 = Vec2::new(direction * BALL_BASE_SPEED, 0.0);
     }
 }
 
@@ -451,7 +460,7 @@ fn handle_collisions(
                         speed * bounce_angle.sin(),
                     );
 
-                    // Play paddle bounce sound
+                                        // Play paddle bounce sound
                     commands.spawn((
                         AudioPlayer::new(audio.paddle_bounce.clone()),
                         PlaybackSettings::DESPAWN,
