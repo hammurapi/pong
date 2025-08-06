@@ -52,8 +52,8 @@ fn move_paddle(
     time: Res<Time>,
     game_state: Res<GameState>,
 ) {
-    if game_state.game_over {
-        return; // Don't move paddles if game is over
+    if game_state.phase != GamePhase::Playing {
+        return;
     }
     
     for (mut pos, settings) in &mut paddles {
@@ -72,6 +72,12 @@ fn move_paddle(
 #[derive(Component)]
 struct Ball(Vec2);
 
+#[derive(Component)]
+struct ScoreText;
+
+#[derive(Component)]
+struct StartScreenText;
+
 fn spawn_ball(mut commands: Commands) {
     commands.spawn((
         Sprite {
@@ -89,8 +95,8 @@ fn move_ball(
     time: Res<Time>,
     game_state: Res<GameState>,
 ) {
-    if game_state.game_over {
-        return; // Don't move ball if game is over
+    if game_state.phase != GamePhase::Playing {
+        return;
     }
     
     for (mut pos, ball) in &mut ball {
@@ -115,9 +121,15 @@ struct Score {
     right: u32,
 }
 
+#[derive(Resource, PartialEq, Eq, Clone, Copy)]
+enum GamePhase {
+    StartScreen,
+    Playing,
+}
+
 #[derive(Resource)]
 struct GameState {
-    game_over: bool,
+    phase: GamePhase,
     winner: Option<String>,
 }
 
@@ -158,21 +170,82 @@ fn spawn_ui(mut commands: Commands) {
                 ..default()
             },
             TextColor(Color::srgba(1.0, 1.0, 1.0, 0.4)), // White with 40% opacity
+            ScoreText,
+            Visibility::Hidden, // Start hidden since game starts in StartScreen phase
         ));
     });
+}
+
+fn spawn_start_screen(mut commands: Commands) {
+    commands.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            display: Display::Flex,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+    )).with_children(|parent| {
+        parent.spawn((
+            Text::new("PONG\nPress any key to start\nPress ESC to exit"),
+            TextLayout::new_with_justify(JustifyText::Center),
+            TextFont {
+                font_size: 60.0,
+                ..default()
+            },
+            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+            StartScreenText,
+        ));
+    });
+}
+
+fn start_screen_input(
+    input: Res<ButtonInput<KeyCode>>,
+    mut game_state: ResMut<GameState>,
+    mut exit: EventWriter<AppExit>,
+    mut commands: Commands,
+    start_screen_nodes: Query<Entity, (With<Node>, With<Children>, Without<ScoreText>)>,
+    children_query: Query<&Children>,
+    start_screen_text_query: Query<Entity, With<StartScreenText>>,
+) {
+    if game_state.phase == GamePhase::StartScreen {
+        if input.just_pressed(KeyCode::Escape) {
+            exit.write(AppExit::Success);
+        } else if input.get_just_pressed().next().is_some() {
+            game_state.phase = GamePhase::Playing;
+            game_state.winner = None;
+            // Despawn only the start screen nodes that contain StartScreenText
+            for node_entity in &start_screen_nodes {
+                if let Ok(children) = children_query.get(node_entity) {
+                    for child in children {
+                        if start_screen_text_query.contains(*child) {
+                            commands.entity(node_entity).despawn();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn check_game_over(
     score: Res<Score>,
     mut game_state: ResMut<GameState>,
+    mut commands: Commands,
 ) {
-    if !game_state.game_over {
+    if game_state.phase == GamePhase::Playing {
         if score.left >= 10 {
-            game_state.game_over = true;
+            game_state.phase = GamePhase::StartScreen;
             game_state.winner = Some("Left Player".to_string());
+            commands.insert_resource(Score { left: 0, right: 0 });
+            spawn_start_screen(commands);
         } else if score.right >= 10 {
-            game_state.game_over = true;
+            game_state.phase = GamePhase::StartScreen;
             game_state.winner = Some("Right Player".to_string());
+            commands.insert_resource(Score { left: 0, right: 0 });
+            spawn_start_screen(commands);
         }
     }
 }
@@ -180,28 +253,31 @@ fn check_game_over(
 fn update_score_display(
     score: Res<Score>,
     game_state: Res<GameState>,
-    mut text_query: Query<&mut Text>,
+    mut score_text_query: Query<(&mut Text, &mut Visibility), With<ScoreText>>,
+    mut start_screen_text_query: Query<&mut Text, (With<StartScreenText>, Without<ScoreText>)>,
 ) {
-    if score.is_changed() || game_state.is_changed() {
-        for mut text in &mut text_query {
-            if game_state.game_over {
-                if let Some(winner) = &game_state.winner {
-                    text.0 = format!("{} WINS!\n{} - {}", winner, score.left, score.right);
-                }
-            } else {
-                text.0 = format!("{} - {}", score.left, score.right);
-            }
+    // Update score text during gameplay
+    if game_state.phase == GamePhase::Playing {
+        for (mut text, mut visibility) in &mut score_text_query {
+            text.0 = format!("{} - {}", score.left, score.right);
+            *visibility = Visibility::Visible;
+        }
+    } else {
+        // Hide score text during start screen
+        for (_, mut visibility) in &mut score_text_query {
+            *visibility = Visibility::Hidden;
         }
     }
-}
-
-fn game_over_input(
-    input: Res<ButtonInput<KeyCode>>,
-    game_state: Res<GameState>,
-    mut exit: EventWriter<AppExit>,
-) {
-    if game_state.game_over && input.just_pressed(KeyCode::Escape) {
-        exit.send(AppExit::Success);
+    
+    // Update start screen text
+    if game_state.phase == GamePhase::StartScreen {
+        for mut text in &mut start_screen_text_query {
+            if let Some(winner) = &game_state.winner {
+                text.0 = format!("{} WINS!\nPress any key to restart\nPress ESC to exit", winner);
+            } else {
+                text.0 = "PONG\nPress any key to start\nPress ESC to exit".to_string();
+            }
+        }
     }
 }
 
@@ -211,8 +287,8 @@ fn check_ball_out_of_bounds(
     mut commands: Commands,
     game_state: Res<GameState>,
 ) {
-    if game_state.game_over {
-        return; // Don't check bounds if game is over
+    if game_state.phase != GamePhase::Playing {
+        return;
     }
     
     for (entity, ball_transform, mut velocity) in &mut balls {
@@ -235,7 +311,7 @@ fn increase_ball_speed(
     mut game_timer: ResMut<GameTimer>,
     game_state: Res<GameState>,
 ) {
-    if game_state.game_over {
+    if game_state.phase != GamePhase::Playing {
         return;
     }
     
@@ -270,8 +346,8 @@ fn ball_collide(
     audio: Res<GameAudio>,
     game_state: Res<GameState>,
 ) {
-    if game_state.game_over {
-        return; // Don't process collisions if game is over
+    if game_state.phase != GamePhase::Playing {
+        return;
     }
     
     for (ball, mut velocity) in &mut balls {
@@ -320,9 +396,9 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.insert_resource(Score { left: 0, right: 0 });
-    app.insert_resource(GameState { 
-        game_over: false, 
-        winner: None 
+    app.insert_resource(GameState {
+        phase: GamePhase::StartScreen,
+        winner: None,
     });
     app.insert_resource(GameTimer { elapsed: 0.0 });
     app.add_systems(
@@ -333,6 +409,7 @@ fn main() {
             spawn_ball,
             spawn_ui,
             load_sounds,
+            spawn_start_screen,
         ),
     );
     app.add_systems(
@@ -344,7 +421,7 @@ fn main() {
             check_ball_out_of_bounds,
             check_game_over,
             update_score_display,
-            game_over_input,
+            start_screen_input,
             increase_ball_speed,
         ),
     );
