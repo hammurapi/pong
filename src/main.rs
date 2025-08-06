@@ -30,6 +30,7 @@ fn spawn_players(mut commands: Commands) {
             move_up: KeyCode::KeyW,
             move_down: KeyCode::KeyS,
         },
+        Visibility::Hidden, // Start hidden since game starts in StartScreen phase
     ));
 
     commands.spawn((
@@ -43,6 +44,7 @@ fn spawn_players(mut commands: Commands) {
             move_up: KeyCode::ArrowUp,
             move_down: KeyCode::ArrowDown,
         },
+        Visibility::Hidden, // Start hidden since game starts in StartScreen phase
     ));
 }
 
@@ -55,7 +57,7 @@ fn move_paddle(
     if game_state.phase != GamePhase::Playing {
         return;
     }
-    
+
     for (mut pos, settings) in &mut paddles {
         if input.pressed(settings.move_up) {
             pos.translation.y += 100.0 * time.delta_secs();
@@ -87,6 +89,7 @@ fn spawn_ball(mut commands: Commands) {
         },
         Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
         Ball(Vec2::new(-100.0, 0.0)),
+        Visibility::Hidden, // Start hidden since game starts in StartScreen phase
     ));
 }
 
@@ -98,7 +101,7 @@ fn move_ball(
     if game_state.phase != GamePhase::Playing {
         return;
     }
-    
+
     for (mut pos, ball) in &mut ball {
         pos.translation += ball.0.extend(0.) * time.delta_secs();
     }
@@ -150,8 +153,8 @@ fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 fn spawn_ui(mut commands: Commands) {
     // Create a container that fills the screen
-    commands.spawn((
-        Node {
+    commands
+        .spawn((Node {
             width: Val::Percent(100.0),
             height: Val::Percent(100.0),
             display: Display::Flex,
@@ -159,45 +162,45 @@ fn spawn_ui(mut commands: Commands) {
             align_items: AlignItems::FlexStart,
             padding: UiRect::top(Val::Percent(15.0)),
             ..default()
-        },
-    )).with_children(|parent| {
-        // Score text as a child
-        parent.spawn((
-            Text::new("0 - 0"),
-            TextLayout::new_with_justify(JustifyText::Center),
-            TextFont {
-                font_size: 60.0,
-                ..default()
-            },
-            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.4)), // White with 40% opacity
-            ScoreText,
-            Visibility::Hidden, // Start hidden since game starts in StartScreen phase
-        ));
-    });
+        },))
+        .with_children(|parent| {
+            // Score text as a child
+            parent.spawn((
+                Text::new("0 - 0"),
+                TextLayout::new_with_justify(JustifyText::Center),
+                TextFont {
+                    font_size: 60.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.4)), // White with 40% opacity
+                ScoreText,
+                Visibility::Hidden, // Start hidden since game starts in StartScreen phase
+            ));
+        });
 }
 
 fn spawn_start_screen(mut commands: Commands) {
-    commands.spawn((
-        Node {
+    commands
+        .spawn((Node {
             width: Val::Percent(100.0),
             height: Val::Percent(100.0),
             display: Display::Flex,
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()
-        },
-    )).with_children(|parent| {
-        parent.spawn((
-            Text::new("PONG\nPress any key to start\nPress ESC to exit"),
-            TextLayout::new_with_justify(JustifyText::Center),
-            TextFont {
-                font_size: 60.0,
-                ..default()
-            },
-            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
-            StartScreenText,
-        ));
-    });
+        },))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("PONG\nPress any key to start\nPress ESC to exit"),
+                TextLayout::new_with_justify(JustifyText::Center),
+                TextFont {
+                    font_size: 60.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                StartScreenText,
+            ));
+        });
 }
 
 fn start_screen_input(
@@ -230,11 +233,7 @@ fn start_screen_input(
     }
 }
 
-fn check_game_over(
-    score: Res<Score>,
-    mut game_state: ResMut<GameState>,
-    mut commands: Commands,
-) {
+fn check_game_over(score: Res<Score>, mut game_state: ResMut<GameState>, mut commands: Commands) {
     if game_state.phase == GamePhase::Playing {
         if score.left >= 10 {
             game_state.phase = GamePhase::StartScreen;
@@ -268,16 +267,41 @@ fn update_score_display(
             *visibility = Visibility::Hidden;
         }
     }
-    
+
     // Update start screen text
     if game_state.phase == GamePhase::StartScreen {
         for mut text in &mut start_screen_text_query {
             if let Some(winner) = &game_state.winner {
-                text.0 = format!("{} WINS!\nPress any key to restart\nPress ESC to exit", winner);
+                text.0 = format!(
+                    "{} WINS!\nPress any key to restart\nPress ESC to exit",
+                    winner
+                );
             } else {
                 text.0 = "PONG\nPress any key to start\nPress ESC to exit".to_string();
             }
         }
+    }
+}
+
+fn update_game_visibility(
+    game_state: Res<GameState>,
+    mut paddle_query: Query<&mut Visibility, (With<Paddle>, Without<Ball>)>,
+    mut ball_query: Query<&mut Visibility, (With<Ball>, Without<Paddle>)>,
+) {
+    let visibility = if game_state.phase == GamePhase::Playing {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+
+    // Update paddle visibility
+    for mut paddle_visibility in &mut paddle_query {
+        *paddle_visibility = visibility;
+    }
+
+    // Update ball visibility
+    for mut ball_visibility in &mut ball_query {
+        *ball_visibility = visibility;
     }
 }
 
@@ -290,7 +314,7 @@ fn check_ball_out_of_bounds(
     if game_state.phase != GamePhase::Playing {
         return;
     }
-    
+
     for (entity, ball_transform, mut velocity) in &mut balls {
         // Check if ball went off left or right side
         if ball_transform.translation.x < -350.0 {
@@ -314,13 +338,13 @@ fn increase_ball_speed(
     if game_state.phase != GamePhase::Playing {
         return;
     }
-    
+
     game_timer.elapsed += time.delta_secs();
-    
+
     // Increase speed every 10 seconds
     if game_timer.elapsed >= 10.0 {
         game_timer.elapsed = 0.0;
-        
+
         for mut ball in &mut balls {
             // Increase speed by 10% each time
             ball.0 *= 1.1;
@@ -349,7 +373,7 @@ fn ball_collide(
     if game_state.phase != GamePhase::Playing {
         return;
     }
-    
+
     for (ball, mut velocity) in &mut balls {
         if ball.translation.y.abs() + BWIDTH / 2. > 250. {
             velocity.0.y *= -1.;
@@ -421,6 +445,7 @@ fn main() {
             check_ball_out_of_bounds,
             check_game_over,
             update_score_display,
+            update_game_visibility,
             start_screen_input,
             increase_ball_speed,
         ),
