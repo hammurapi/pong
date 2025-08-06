@@ -1,6 +1,6 @@
 use bevy::{audio::Volume, prelude::*, text::cosmic_text::rustybuzz::script::PHOENICIAN};
+use avian2d::prelude::*;
 use rand;
-use std::f32::consts::PI;
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
@@ -13,12 +13,13 @@ struct Paddle {
 }
 
 fn spawn_players(mut commands: Commands) {
-    commands.spawn((Sprite {
+    commands.spawn(Sprite {
         color: Color::BLACK,
         custom_size: Some(Vec2::new(700., 500.)),
         ..default()
-    },));
+    });
 
+    // Left paddle
     commands.spawn((
         Sprite {
             color: Color::WHITE,
@@ -26,13 +27,15 @@ fn spawn_players(mut commands: Commands) {
             ..default()
         },
         Transform::from_translation(Vec3::new(-300.0, 0.0, 0.0)),
-        Paddle {
-            move_up: KeyCode::KeyW,
-            move_down: KeyCode::KeyS,
-        },
-        Visibility::Hidden, // Start hidden since game starts in StartScreen phase
-    ));
+        Visibility::Hidden,
+    )).insert(RigidBody::Kinematic)
+      .insert(Collider::rectangle(10.0, 150.0))
+      .insert(Paddle {
+          move_up: KeyCode::KeyW,
+          move_down: KeyCode::KeyS,
+      });
 
+    // Right paddle
     commands.spawn((
         Sprite {
             color: Color::WHITE,
@@ -40,12 +43,13 @@ fn spawn_players(mut commands: Commands) {
             ..default()
         },
         Transform::from_translation(Vec3::new(300.0, 0.0, 0.0)),
-        Paddle {
-            move_up: KeyCode::ArrowUp,
-            move_down: KeyCode::ArrowDown,
-        },
-        Visibility::Hidden, // Start hidden since game starts in StartScreen phase
-    ));
+        Visibility::Hidden,
+    )).insert(RigidBody::Kinematic)
+      .insert(Collider::rectangle(10.0, 150.0))
+      .insert(Paddle {
+          move_up: KeyCode::ArrowUp,
+          move_down: KeyCode::ArrowDown,
+      });
 }
 
 fn move_paddle(
@@ -88,9 +92,12 @@ fn spawn_ball(mut commands: Commands) {
             ..default()
         },
         Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
-        Ball(Vec2::new(-100.0, 0.0)),
-        Visibility::Hidden, // Start hidden since game starts in StartScreen phase
-    ));
+        Visibility::Hidden,
+    )).insert(RigidBody::Dynamic)
+      .insert(Collider::circle(12.5))
+      .insert(LinearVelocity(Vec2::new(-200.0, 0.0)))
+      .insert(Restitution::new(1.0))
+      .insert(Ball(Vec2::new(-200.0, 0.0)));
 }
 
 fn move_ball(
@@ -104,6 +111,42 @@ fn move_ball(
 
     for (mut pos, ball) in &mut ball {
         pos.translation += ball.0.extend(0.) * time.delta_secs();
+    }
+}
+
+fn spawn_walls(mut commands: Commands) {
+    // Top wall
+    commands.spawn(Transform::from_translation(Vec3::new(0.0, 250.0, 0.0)))
+        .insert(RigidBody::Static)
+        .insert(Collider::rectangle(700.0, 10.0));
+    
+    // Bottom wall
+    commands.spawn(Transform::from_translation(Vec3::new(0.0, -250.0, 0.0)))
+        .insert(RigidBody::Static)
+        .insert(Collider::rectangle(700.0, 10.0));
+}
+
+fn handle_ball_physics(
+    mut ball_query: Query<(&mut LinearVelocity, &Transform), With<Ball>>,
+    game_state: Res<GameState>,
+    time: Res<Time>,
+) {
+    if game_state.phase != GamePhase::Playing {
+        return;
+    }
+    
+    // Physics will handle movement automatically, but we can add custom behaviors here
+    for (mut velocity, _transform) in &mut ball_query {
+        // Ensure minimum speed to prevent the ball from getting too slow
+        let speed = velocity.0.length();
+        if speed < 100.0 {
+            velocity.0 = velocity.0.normalize() * 100.0;
+        }
+        
+        // Cap maximum speed
+        if speed > 500.0 {
+            velocity.0 = velocity.0.normalize() * 500.0;
+        }
     }
 }
 
@@ -418,7 +461,7 @@ fn ball_collide(
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins);
+    app.add_plugins((DefaultPlugins, PhysicsPlugins::default()));
     app.insert_resource(Score { left: 0, right: 0 });
     app.insert_resource(GameState {
         phase: GamePhase::StartScreen,
@@ -431,6 +474,7 @@ fn main() {
             setup_camera,
             spawn_players,
             spawn_ball,
+            spawn_walls,
             spawn_ui,
             load_sounds,
             spawn_start_screen,
@@ -440,8 +484,7 @@ fn main() {
         Update,
         (
             move_paddle,
-            move_ball,
-            ball_collide,
+            handle_ball_physics,
             check_ball_out_of_bounds,
             check_game_over,
             update_score_display,
